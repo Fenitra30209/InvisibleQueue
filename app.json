@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "Invisible Queue",
+    "slug": "invisible-queue",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "invisiblequeue",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.invisiblequeue.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#6366f1"
+      },
+      "package": "com.invisiblequeue.app",
+      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Invisible Queue utilise votre position pour afficher les files à proximité."
+        }
+      ]
+    ]
+  }
+}
