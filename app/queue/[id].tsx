@@ -66,47 +66,48 @@ export default function QueueDetailScreen() {
   }
 
   const fetchEntries = async () => {
-  const { data } = await supabase
-    .from('queue_entries')
-    .select(`
-      *,
-      profiles (
-        id,
-        name
-      )
-    `)
-    .eq('queue_id', id)
-    .eq('status', 'waiting')
-    .order('position', { ascending: true })
+    const { data } = await supabase
+      .from('queue_entries')
+      .select(`
+        *,
+        profiles (
+          id,
+          name
+        )
+      `)
+      .eq('queue_id', id)
+      .eq('status', 'waiting')
+      .order('position', { ascending: true })
 
-  if (data) {
-    setEntries(data)
+    if (data) {
+      setEntries(data)
 
-    // Construit la map des noms depuis le join
-    const map: Record<string, string> = {}
-    data.forEach((e: any) => {
-      if (e.user_id && e.profiles?.name) {
-        map[e.user_id] = e.profiles.name
-      }
-    })
-    setUserProfiles(map)
+      // Construit la map des noms
+      const map: Record<string, string> = {}
+      data.forEach((e: any) => {
+        if (e.user_id && e.profiles?.name) {
+          map[e.user_id] = e.profiles.name
+        }
+      })
+      setUserProfiles(map)
 
-    // Retrouve mon entrée
-    if (user?.id) {
-      const mine = data.find((e: any) => e.user_id === user.id)
-      setMyEntry(mine ?? null)
-    } else {
-      const savedId = await AsyncStorage.getItem(`entry_${id}`)
-      if (savedId) {
-        const mine = data.find((e: any) => e.id === savedId)
+      // Retrouve mon entrée
+      if (user?.id) {
+        const mine = data.find((e: any) => e.user_id === user.id)
         setMyEntry(mine ?? null)
       } else {
-        setMyEntry(null)
+        const savedId = await AsyncStorage.getItem(`entry_${id}`)
+        if (savedId) {
+          const mine = data.find((e: any) => e.id === savedId)
+          setMyEntry(mine ?? null)
+        } else {
+          setMyEntry(null)
+        }
       }
     }
+    setLoading(false)
   }
-  setLoading(false)
-}
+
   const handleJoin = async () => {
     if (!queue) return
 
@@ -115,16 +116,45 @@ export default function QueueDetailScreen() {
       return
     }
 
-    if (myEntry) {
-      Alert.alert('Déjà inscrit', 'Vous êtes déjà dans cette file.')
+    // Vérif doublon utilisateur connecté
+    if (user?.id) {
+      const { data: existing } = await supabase
+        .from('queue_entries')
+        .select('id')
+        .eq('queue_id', id)
+        .eq('user_id', user.id)
+        .eq('status', 'waiting')
+        .single()
+
+      if (existing) {
+        Alert.alert('Déjà inscrit', 'Vous êtes déjà dans cette file.')
+        return
+      }
+
+      await joinQueue(user.id, profile?.name ?? '', profile?.email ?? '')
       return
     }
 
-    if (user) {
-      await joinQueue(user.id, profile?.name ?? '', profile?.email ?? '')
-    } else {
-      setShowGuestModal(true)
+    // Vérif doublon invité via AsyncStorage
+    const savedId = await AsyncStorage.getItem(`entry_${id}`)
+    if (savedId) {
+      const { data: existing } = await supabase
+        .from('queue_entries')
+        .select('id')
+        .eq('id', savedId)
+        .eq('status', 'waiting')
+        .single()
+
+      if (existing) {
+        Alert.alert('Déjà inscrit', 'Vous êtes déjà dans cette file.')
+        return
+      }
+
+      // L'entrée n'existe plus, on nettoie
+      await AsyncStorage.removeItem(`entry_${id}`)
     }
+
+    setShowGuestModal(true)
   }
 
   const joinQueue = async (
@@ -171,20 +201,25 @@ export default function QueueDetailScreen() {
       {
         text: 'Quitter', style: 'destructive',
         onPress: async () => {
-          await supabase
-            .from('queue_entries')
-            .delete()
-            .eq('id', myEntry.id)
+  const { error } = await supabase
+    .from('queue_entries')
+    .update({ status: 'removed' })
+    .eq('id', myEntry.id)
 
-          await supabase.rpc('compact_queue', { p_queue_id: id })
-          await AsyncStorage.removeItem(`entry_${id}`)
-          setMyEntry(null)
-        }
+  if (error) {
+    Alert.alert('Erreur', error.message)
+    return
+  }
+
+  await supabase.rpc('compact_queue', { p_queue_id: id })
+  await AsyncStorage.removeItem(`entry_${id}`)
+  setMyEntry(null)
+}
       }
     ])
   }
 
-  const getEntryName = (entry: QueueEntry) => {
+  const getEntryName = (entry: any) => {
     if (entry.id === myEntry?.id) {
       return (profile?.name ?? myEntry?.guest_name ?? 'Moi') + ' (moi)'
     }
