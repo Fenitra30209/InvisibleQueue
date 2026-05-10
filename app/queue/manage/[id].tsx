@@ -5,7 +5,7 @@ import {
 } from 'react-native'
 import { useLocalSearchParams, router } from 'expo-router'
 import { supabase } from '../../../lib/supabase'
-import { useAuth } from '../../../hooks/useAuth'
+import { useAuth } from '../../../context/AuthContext'
 import { QueueEntry } from '../../../types/database'
 
 export default function ManageQueueScreen() {
@@ -17,10 +17,27 @@ export default function ManageQueueScreen() {
   const [refreshing, setRefreshing] = useState(false)
   const [processing, setProcessing] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetchData()
-    subscribeToEntries()
-  }, [id])
+useEffect(() => {
+  fetchData()
+
+  const channel = supabase
+    .channel(`manage-${id}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'queue_entries',
+        filter: `queue_id=eq.${id}`,
+      },
+      () => fetchEntries()
+    )
+    .subscribe()
+
+  return () => {
+    supabase.removeChannel(channel)
+  }
+}, [id])
 
   const fetchData = async () => {
     // Vérifie que l'user est bien le propriétaire

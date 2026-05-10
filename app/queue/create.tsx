@@ -6,7 +6,7 @@ import {
 } from 'react-native'
 import { router } from 'expo-router'
 import { supabase } from '../../lib/supabase'
-import { useAuth } from '../../hooks/useAuth'
+import { useAuth } from '../../context/AuthContext'
 import { useLocation } from '../../hooks/useLocation'
 
 export default function CreateQueueScreen() {

@@ -4,7 +4,7 @@ import {
   StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform
 } from 'react-native'
 import { router } from 'expo-router'
-import { useAuth } from '../../hooks/useAuth'
+import { useAuth } from '../../context/AuthContext'
 
 export default function LoginScreen() {
   const { signIn } = useAuth()

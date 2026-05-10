@@ -4,70 +4,54 @@ import { supabase } from '../lib/supabase'
 
 export function useQueueNotifications(
   queueId: string | null,
-  userId: string | null
+  entryId: string | null  // on utilise l'ID de l'entrée directement
 ) {
-  const lastPositionRef = useRef<number | null>(null)
-  const hasNotifiedSoon = useRef(false)
-  const hasNotifiedTurn = useRef(false)
+  const hasNotified3 = useRef(false)
+  const hasNotified2 = useRef(false)
+  const hasNotified1 = useRef(false)
 
   useEffect(() => {
-    if (!queueId || !userId) return
+    if (!queueId || !entryId) return
+
+    // Reset les notifications à chaque nouvelle entrée
+    hasNotified3.current = false
+    hasNotified2.current = false
+    hasNotified1.current = false
 
     const channel = supabase
-      .channel(`notif-${queueId}-${userId}`)
+      .channel(`notif-${entryId}`)
       .on(
         'postgres_changes',
         {
           event: 'UPDATE',
           schema: 'public',
           table: 'queue_entries',
-          filter: `queue_id=eq.${queueId}`,
+          filter: `id=eq.${entryId}`,
         },
-        async () => {
-          // Récupère ma position actuelle
-          const { data } = await supabase
-            .from('queue_entries')
-            .select('position, status')
-            .eq('queue_id', queueId)
-            .eq('user_id', userId)
-            .eq('status', 'waiting')
-            .single()
+        (payload) => {
+          const position = payload.new?.position
+          const status = payload.new?.status
 
-          if (!data) return
+          if (status !== 'waiting') return
 
-          const position = data.position
-
-          // Notification : bientôt ton tour (position 3)
-          if (position === 3 && !hasNotifiedSoon.current) {
-            hasNotifiedSoon.current = true
-            Alert.alert(
-              '⚡ Bientôt votre tour !',
-              'Plus que 2 personnes avant vous. Préparez-vous !'
-            )
+          if (position === 3 && !hasNotified3.current) {
+            hasNotified3.current = true
+            Alert.alert('⚡ Bientôt votre tour !', 'Plus que 2 personnes avant vous.')
           }
 
-          // Notification : prochain (position 2)
-          if (position === 2 && lastPositionRef.current !== 2) {
-            Alert.alert(
-              '🔔 Vous êtes le prochain !',
-              'Vous êtes en 2ème position. Approchez-vous !'
-            )
+          if (position === 2 && !hasNotified2.current) {
+            hasNotified2.current = true
+            Alert.alert('🔔 Vous êtes le prochain !', 'Approchez-vous !')
           }
 
-          // Notification : c'est votre tour (position 1)
-          if (position === 1 && !hasNotifiedTurn.current) {
-            hasNotifiedTurn.current = true
-            Alert.alert(
-              '🎉 C\'est votre tour !',
-              'Veuillez vous présenter maintenant.'
-            )
+          if (position === 1 && !hasNotified1.current) {
+            hasNotified1.current = true
+            Alert.alert('🎉 C\'est votre tour !', 'Veuillez vous présenter maintenant.')
           }
-
-          lastPositionRef.current = position
         }
       )
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
-  }, [queueId, userId])
+  }, [queueId, entryId])
 }

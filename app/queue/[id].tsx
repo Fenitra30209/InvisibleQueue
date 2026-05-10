@@ -6,19 +6,21 @@ import {
 } from 'react-native'
 import { useLocalSearchParams, router } from 'expo-router'
 import { supabase } from '../../lib/supabase'
-import { useAuth } from '../../hooks/useAuth'
+import { useAuth } from '../../context/AuthContext'
 import { useLocation } from '../../hooks/useLocation'
 import { Queue, QueueEntry } from '../../types/database'
 import { useQueueNotifications } from '../../hooks/useNotifications'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 
 export default function QueueDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const { user, profile } = useAuth()
-  const { location, isNearQueue } = useLocation()
+  const { isNearQueue } = useLocation()
 
   const [queue, setQueue] = useState<Queue | null>(null)
   const [entries, setEntries] = useState<QueueEntry[]>([])
   const [myEntry, setMyEntry] = useState<QueueEntry | null>(null)
+  const [userProfiles, setUserProfiles] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [joining, setJoining] = useState(false)
   const [showGuestModal, setShowGuestModal] = useState(false)
@@ -26,14 +28,30 @@ export default function QueueDetailScreen() {
   const [guestEmail, setGuestEmail] = useState('')
   const [isOwner, setIsOwner] = useState(false)
 
-// Notifications automatiques
-  useQueueNotifications(id ?? null, user?.id ?? null)
+  useQueueNotifications(id ?? null, myEntry?.id ?? null)
 
   useEffect(() => {
-    fetchQueue()
-    fetchEntries()
-    subscribeToEntries()
-  }, [id])
+    if (id) {
+      fetchQueue()
+      fetchEntries()
+
+      const channel = supabase
+        .channel(`queue-${id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'queue_entries',
+            filter: `queue_id=eq.${id}`,
+          },
+          () => fetchEntries()
+        )
+        .subscribe()
+
+      return () => { supabase.removeChannel(channel) }
+    }
+  }, [id, user])
 
   const fetchQueue = async () => {
     const { data } = await supabase
@@ -41,56 +59,59 @@ export default function QueueDetailScreen() {
       .select('*')
       .eq('id', id)
       .single()
-    if (data) setQueue(data)
-        if (user && data.owner_id === user.id) setIsOwner(true)
+    if (data) {
+      setQueue(data)
+      if (user && data.owner_id === user.id) setIsOwner(true)
+    }
   }
 
   const fetchEntries = async () => {
-    const { data } = await supabase
-      .from('queue_entries')
-      .select('*')
-      .eq('queue_id', id)
-      .eq('status', 'waiting')
-      .order('position', { ascending: true })
+  const { data } = await supabase
+    .from('queue_entries')
+    .select(`
+      *,
+      profiles (
+        id,
+        name
+      )
+    `)
+    .eq('queue_id', id)
+    .eq('status', 'waiting')
+    .order('position', { ascending: true })
 
-    if (data) {
-      setEntries(data)
-      // Cherche mon entrée
-      if (user) {
-        const mine = data.find((e: QueueEntry) => e.user_id === user.id)
+  if (data) {
+    setEntries(data)
+
+    // Construit la map des noms depuis le join
+    const map: Record<string, string> = {}
+    data.forEach((e: any) => {
+      if (e.user_id && e.profiles?.name) {
+        map[e.user_id] = e.profiles.name
+      }
+    })
+    setUserProfiles(map)
+
+    // Retrouve mon entrée
+    if (user?.id) {
+      const mine = data.find((e: any) => e.user_id === user.id)
+      setMyEntry(mine ?? null)
+    } else {
+      const savedId = await AsyncStorage.getItem(`entry_${id}`)
+      if (savedId) {
+        const mine = data.find((e: any) => e.id === savedId)
         setMyEntry(mine ?? null)
+      } else {
+        setMyEntry(null)
       }
     }
-    setLoading(false)
   }
-
-  // Temps réel — écoute les changements de queue_entries
-  const subscribeToEntries = () => {
-    const channel = supabase
-      .channel(`queue-${id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'queue_entries',
-          filter: `queue_id=eq.${id}`,
-        },
-        () => fetchEntries() // recharge à chaque changement
-      )
-      .subscribe()
-
-    return () => { supabase.removeChannel(channel) }
-  }
-
+  setLoading(false)
+}
   const handleJoin = async () => {
     if (!queue) return
 
     if (!isNearQueue(queue.latitude, queue.longitude)) {
-      Alert.alert(
-        'Trop loin',
-        'Vous devez être à moins de 500m de la file pour vous inscrire.'
-      )
+      Alert.alert('Trop loin', 'Vous devez être à moins de 3km de la file.')
       return
     }
 
@@ -113,7 +134,6 @@ export default function QueueDetailScreen() {
   ) => {
     setJoining(true)
 
-    // Calcule la prochaine position
     const { data: posData } = await supabase
       .rpc('next_position', { p_queue_id: id })
 
@@ -135,6 +155,9 @@ export default function QueueDetailScreen() {
     if (error) {
       Alert.alert('Erreur', error.message)
     } else {
+      if (!userId) {
+        await AsyncStorage.setItem(`entry_${id}`, data.id)
+      }
       setMyEntry(data)
       setShowGuestModal(false)
       Alert.alert('✅ Inscrit !', `Vous êtes en position ${posData}.`)
@@ -153,12 +176,22 @@ export default function QueueDetailScreen() {
             .delete()
             .eq('id', myEntry.id)
 
-          // Compacte la file
           await supabase.rpc('compact_queue', { p_queue_id: id })
+          await AsyncStorage.removeItem(`entry_${id}`)
           setMyEntry(null)
         }
       }
     ])
+  }
+
+  const getEntryName = (entry: QueueEntry) => {
+    if (entry.id === myEntry?.id) {
+      return (profile?.name ?? myEntry?.guest_name ?? 'Moi') + ' (moi)'
+    }
+    if (entry.user_id) {
+      return userProfiles[entry.user_id] ?? 'Utilisateur'
+    }
+    return entry.guest_name ?? 'Invité'
   }
 
   if (loading) {
@@ -181,13 +214,13 @@ export default function QueueDetailScreen() {
         </TouchableOpacity>
         <Text style={styles.queueName}>{queue?.name}</Text>
         {isOwner && (
-  <TouchableOpacity
-    onPress={() => router.push(`/queue/manage/${id}`)}
-    style={styles.manageBtn}
-  >
-    <Text style={styles.manageBtnText}>⚙️ Gérer</Text>
-  </TouchableOpacity>
-)}
+          <TouchableOpacity
+            onPress={() => router.push(`/queue/manage/${id}`)}
+            style={styles.manageBtn}
+          >
+            <Text style={styles.manageBtnText}>⚙️ Gérer</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -197,8 +230,11 @@ export default function QueueDetailScreen() {
           <View style={styles.myCard}>
             <Text style={styles.myCardLabel}>Ma position</Text>
             <Text style={styles.myCardPosition}>{myPosition}</Text>
+            <Text style={styles.myCardName}>
+              {profile?.name ?? myEntry.guest_name ?? 'Invité'}
+            </Text>
             <Text style={styles.myCardSub}>
-              {waitingCount - (myPosition ?? 0)} personne(s) devant vous
+              {(myPosition ?? 1) - 1} personne(s) devant vous
             </Text>
 
             {myPosition === 1 && (
@@ -241,7 +277,7 @@ export default function QueueDetailScreen() {
           </View>
         </View>
 
-        {/* Liste des personnes */}
+        {/* Liste */}
         <Text style={styles.sectionTitle}>File d'attente</Text>
         {entries.map((entry) => (
           <View
@@ -254,12 +290,7 @@ export default function QueueDetailScreen() {
             <View style={styles.entryPos}>
               <Text style={styles.entryPosText}>{entry.position}</Text>
             </View>
-            <Text style={styles.entryName}>
-              {entry.user_id
-                ? (entry.id === myEntry?.id ? profile?.name ?? 'Moi' : 'Utilisateur')
-                : entry.guest_name ?? 'Invité'}
-              {entry.id === myEntry?.id ? ' (moi)' : ''}
-            </Text>
+            <Text style={styles.entryName}>{getEntryName(entry)}</Text>
           </View>
         ))}
 
@@ -332,36 +363,41 @@ const styles = StyleSheet.create({
   backBtn: { marginBottom: 8 },
   backText: { color: '#6366f1', fontSize: 15, fontWeight: '500' },
   queueName: { fontSize: 22, fontWeight: '700', color: '#1e293b' },
+  manageBtn: {
+    marginTop: 6, backgroundColor: '#f1f5f9',
+    borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6,
+    alignSelf: 'flex-start',
+  },
+  manageBtnText: { color: '#475569', fontWeight: '600', fontSize: 13 },
   content: { padding: 20, gap: 16 },
-
   myCard: {
-    backgroundColor: '#6366f1', borderRadius: 20, padding: 24, alignItems: 'center',
+    backgroundColor: '#6366f1', borderRadius: 20,
+    padding: 24, alignItems: 'center', gap: 4,
   },
   myCardLabel: { color: '#c7d2fe', fontSize: 14, fontWeight: '500' },
   myCardPosition: { color: '#fff', fontSize: 72, fontWeight: '800', lineHeight: 80 },
-  myCardSub: { color: '#c7d2fe', fontSize: 14, marginBottom: 8 },
+  myCardName: { color: '#e0e7ff', fontSize: 16, fontWeight: '600' },
+  myCardSub: { color: '#c7d2fe', fontSize: 14, marginBottom: 4 },
   yourTurnBadge: {
-    backgroundColor: '#22c55e', borderRadius: 20, paddingHorizontal: 16,
-    paddingVertical: 6, marginVertical: 8,
+    backgroundColor: '#22c55e', borderRadius: 20,
+    paddingHorizontal: 16, paddingVertical: 6, marginVertical: 8,
   },
   yourTurnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   soonBadge: {
-    backgroundColor: '#f59e0b', borderRadius: 20, paddingHorizontal: 16,
-    paddingVertical: 6, marginVertical: 8,
+    backgroundColor: '#f59e0b', borderRadius: 20,
+    paddingHorizontal: 16, paddingVertical: 6, marginVertical: 8,
   },
   soonText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   leaveBtn: {
-    marginTop: 16, backgroundColor: 'rgba(255,255,255,0.2)',
+    marginTop: 12, backgroundColor: 'rgba(255,255,255,0.2)',
     borderRadius: 12, paddingHorizontal: 24, paddingVertical: 10,
   },
   leaveBtnText: { color: '#fff', fontWeight: '600', fontSize: 14 },
-
   joinBtn: {
     backgroundColor: '#6366f1', borderRadius: 16,
     padding: 18, alignItems: 'center',
   },
   joinBtnText: { color: '#fff', fontWeight: '700', fontSize: 17 },
-
   statsRow: { flexDirection: 'row', gap: 12 },
   statCard: {
     flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 16,
@@ -370,7 +406,6 @@ const styles = StyleSheet.create({
   },
   statValue: { fontSize: 24, fontWeight: '700', color: '#1e293b' },
   statLabel: { fontSize: 12, color: '#64748b', marginTop: 4 },
-
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#1e293b', marginTop: 8 },
   entryRow: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
@@ -385,7 +420,6 @@ const styles = StyleSheet.create({
   entryPosText: { fontWeight: '700', color: '#475569' },
   entryName: { fontSize: 15, color: '#1e293b', fontWeight: '500' },
   emptyText: { color: '#94a3b8', textAlign: 'center', marginTop: 12, fontSize: 14 },
-
   modalOverlay: {
     flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)',
   },
@@ -400,10 +434,4 @@ const styles = StyleSheet.create({
     fontSize: 15, borderWidth: 1, borderColor: '#e2e8f0',
   },
   cancelText: { color: '#94a3b8', textAlign: 'center', marginTop: 8, fontSize: 14 },
-  manageBtn: {
-  marginTop: 6, backgroundColor: '#f1f5f9',
-  borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6,
-  alignSelf: 'flex-start',
-},
-manageBtnText: { color: '#475569', fontWeight: '600', fontSize: 13 },
 })
