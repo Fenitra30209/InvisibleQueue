@@ -4,6 +4,7 @@ import {
   StyleSheet, Alert, ActivityIndicator,
   KeyboardAvoidingView, Platform, ScrollView
 } from 'react-native'
+import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -68,7 +69,7 @@ export default function CreateQueueScreen() {
       Alert.alert('Erreur', error.message)
     } else {
       Alert.alert(
-        '✅ File créée !',
+        'File créée !',
         `"${data.name}" est maintenant visible à proximité.`,
         [
           {
@@ -93,8 +94,9 @@ export default function CreateQueueScreen() {
 
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Text style={styles.backText}>← Retour</Text>
+          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={18} color="#6366f1" />
+            <Text style={styles.backText}>Retour</Text>
           </TouchableOpacity>
           <Text style={styles.title}>Créer une file</Text>
           <Text style={styles.subtitle}>
@@ -125,14 +127,20 @@ export default function CreateQueueScreen() {
           >
             <View style={styles.optionRow}>
               <View style={[styles.radio, useMyLocation && styles.radioActive]} />
-              <View>
-                <Text style={styles.optionTitle}>📍 Ma position actuelle</Text>
+              <View style={{ flex: 1 }}>
+                <View style={styles.optionTitleRow}>
+                  <Ionicons name="location-outline" size={15} color="#1e293b" style={{ marginRight: 6 }} />
+                  <Text style={styles.optionTitle}>Ma position actuelle</Text>
+                </View>
                 {location ? (
                   <Text style={styles.optionSub}>
                     {location.latitude.toFixed(5)}, {location.longitude.toFixed(5)}
                   </Text>
                 ) : (
-                  <Text style={styles.optionSubWarn}>GPS non disponible</Text>
+                  <View style={styles.optionWarnRow}>
+                    <Ionicons name="warning-outline" size={12} color="#f59e0b" style={{ marginRight: 4 }} />
+                    <Text style={styles.optionSubWarn}>GPS non disponible</Text>
+                  </View>
                 )}
               </View>
             </View>
@@ -144,7 +152,10 @@ export default function CreateQueueScreen() {
           >
             <View style={styles.optionRow}>
               <View style={[styles.radio, !useMyLocation && styles.radioActive]} />
-              <Text style={styles.optionTitle}>🗺️ Coordonnées manuelles</Text>
+              <View style={styles.optionTitleRow}>
+                <Ionicons name="map-outline" size={15} color="#1e293b" style={{ marginRight: 6 }} />
+                <Text style={styles.optionTitle}>Coordonnées manuelles</Text>
+              </View>
             </View>
           </TouchableOpacity>
 
@@ -174,10 +185,14 @@ export default function CreateQueueScreen() {
           onPress={handleCreate}
           disabled={loading}
         >
-          {loading
-            ? <ActivityIndicator color="#fff" />
-            : <Text style={styles.createBtnText}>Créer la file</Text>
-          }
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <View style={styles.createBtnInner}>
+              <Ionicons name="checkmark-circle-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.createBtnText}>Créer la file</Text>
+            </View>
+          )}
         </TouchableOpacity>
 
       </ScrollView>
@@ -188,37 +203,59 @@ export default function CreateQueueScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc' },
   content: { padding: 24, gap: 24 },
+
   header: { paddingTop: 40, gap: 6 },
-  backText: { color: '#6366f1', fontSize: 15, fontWeight: '500', marginBottom: 8 },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  backText: { color: '#6366f1', fontSize: 15, fontWeight: '500' },
   title: { fontSize: 28, fontWeight: '700', color: '#1e293b' },
   subtitle: { fontSize: 14, color: '#64748b' },
+
   section: { gap: 10 },
   label: { fontSize: 15, fontWeight: '600', color: '#374151' },
   input: {
-    backgroundColor: '#fff', borderRadius: 12, padding: 16,
-    fontSize: 15, borderWidth: 1, borderColor: '#e2e8f0',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 15,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
   hint: { fontSize: 12, color: '#94a3b8', textAlign: 'right' },
+
   optionCard: {
-    backgroundColor: '#fff', borderRadius: 14, padding: 16,
-    borderWidth: 2, borderColor: '#e2e8f0',
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: '#e2e8f0',
   },
   optionCardActive: { borderColor: '#6366f1', backgroundColor: '#eef2ff' },
   optionRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  optionTitleRow: { flexDirection: 'row', alignItems: 'center' },
+  optionWarnRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
   radio: {
-    width: 20, height: 20, borderRadius: 10,
-    borderWidth: 2, borderColor: '#cbd5e1',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#cbd5e1',
   },
   radioActive: { borderColor: '#6366f1', backgroundColor: '#6366f1' },
   optionTitle: { fontSize: 15, fontWeight: '500', color: '#1e293b' },
   optionSub: { fontSize: 12, color: '#64748b', marginTop: 2 },
-  optionSubWarn: { fontSize: 12, color: '#f59e0b', marginTop: 2 },
+  optionSubWarn: { fontSize: 12, color: '#f59e0b' },
+
   coordRow: { flexDirection: 'row', gap: 10 },
   coordInput: { flex: 1 },
+
   createBtn: {
-    backgroundColor: '#6366f1', borderRadius: 16,
-    padding: 18, alignItems: 'center', marginTop: 8,
+    backgroundColor: '#6366f1',
+    borderRadius: 16,
+    padding: 18,
+    alignItems: 'center',
+    marginTop: 8,
   },
   createBtnDisabled: { opacity: 0.6 },
+  createBtnInner: { flexDirection: 'row', alignItems: 'center' },
   createBtnText: { color: '#fff', fontWeight: '700', fontSize: 17 },
 })

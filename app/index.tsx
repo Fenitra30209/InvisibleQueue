@@ -4,6 +4,7 @@ import {
   ActivityIndicator, RefreshControl, FlatList
 } from 'react-native'
 import MapView, { Marker, Circle } from 'react-native-maps'
+import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -62,7 +63,8 @@ export default function HomeScreen() {
   if (locationError) {
     return (
       <View style={styles.center}>
-        <Text style={styles.errorText}>📍 {locationError}</Text>
+        <Ionicons name="location-outline" size={32} color="#ef4444" style={{ marginBottom: 8 }} />
+        <Text style={styles.errorText}>{locationError}</Text>
         <Text style={styles.subtitle}>Activez la géolocalisation.</Text>
       </View>
     )
@@ -85,10 +87,11 @@ export default function HomeScreen() {
                 style={styles.btnOutline}
                 onPress={() => router.push('/queue/create')}
               >
-                <Text style={styles.btnOutlineText}>+ File</Text>
+                <Ionicons name="add" size={16} color="#6366f1" />
+                <Text style={styles.btnOutlineText}>File</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={signOut}>
-                <Text style={styles.signOutText}>Déco</Text>
+              <TouchableOpacity onPress={signOut} style={styles.signOutBtn}>
+                <Ionicons name="log-out-outline" size={20} color="#ef4444" />
               </TouchableOpacity>
             </>
           ) : (
@@ -108,16 +111,28 @@ export default function HomeScreen() {
           style={[styles.toggleBtn, view === 'list' && styles.toggleBtnActive]}
           onPress={() => setView('list')}
         >
+          <Ionicons
+            name="list-outline"
+            size={16}
+            color={view === 'list' ? '#1e293b' : '#64748b'}
+            style={{ marginRight: 6 }}
+          />
           <Text style={[styles.toggleText, view === 'list' && styles.toggleTextActive]}>
-            📋 Liste
+            Liste
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.toggleBtn, view === 'map' && styles.toggleBtnActive]}
           onPress={() => setView('map')}
         >
+          <Ionicons
+            name="map-outline"
+            size={16}
+            color={view === 'map' ? '#1e293b' : '#64748b'}
+            style={{ marginRight: 6 }}
+          />
           <Text style={[styles.toggleText, view === 'map' && styles.toggleTextActive]}>
-            🗺️ Carte
+            Carte
           </Text>
         </TouchableOpacity>
       </View>
@@ -136,7 +151,6 @@ export default function HomeScreen() {
             showsUserLocation
             showsMyLocationButton
           >
-            {/* Cercle rayon */}
             <Circle
               center={{ latitude: location.latitude, longitude: location.longitude }}
               radius={MAX_RADIUS}
@@ -144,8 +158,6 @@ export default function HomeScreen() {
               strokeColor="rgba(99,102,241,0.3)"
               strokeWidth={1}
             />
-
-            {/* Markers des files */}
             {queues.map((queue) => (
               <Marker
                 key={queue.id}
@@ -158,10 +170,10 @@ export default function HomeScreen() {
             ))}
           </MapView>
 
-          {/* Légende */}
           <View style={styles.mapLegend}>
+            <Ionicons name="location-outline" size={14} color="#475569" style={{ marginRight: 6 }} />
             <Text style={styles.mapLegendText}>
-              📍 {queues.length} file(s) dans un rayon de {MAX_RADIUS / 1000}km
+              {queues.length} file(s) dans un rayon de {MAX_RADIUS / 1000} km
             </Text>
           </View>
         </View>
@@ -174,25 +186,29 @@ export default function HomeScreen() {
             <ActivityIndicator style={{ marginTop: 40 }} size="large" color="#6366f1" />
           ) : queues.length === 0 ? (
             <View style={styles.center}>
-              <Text style={styles.emptyIcon}>🔍</Text>
+              <Ionicons name="search-outline" size={48} color="#cbd5e1" style={{ marginBottom: 12 }} />
               <Text style={styles.emptyText}>
-                Aucune file dans un rayon de {MAX_RADIUS / 1000}km
+                Aucune file dans un rayon de {MAX_RADIUS / 1000} km
               </Text>
             </View>
           ) : (
             <FlatList
               data={queues}
               keyExtractor={(item) => item.id}
-              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6366f1" />}
               contentContainerStyle={styles.list}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.card}
                   onPress={() => router.push(`/queue/${item.id}`)}
+                  activeOpacity={0.7}
                 >
                   <View style={styles.cardLeft}>
                     <Text style={styles.cardName}>{item.name}</Text>
-                    <Text style={styles.cardDistance}>📍 {item.distance_meters}m</Text>
+                    <View style={styles.cardDistanceRow}>
+                      <Ionicons name="location-outline" size={13} color="#94a3b8" />
+                      <Text style={styles.cardDistance}>{item.distance_meters} m</Text>
+                    </View>
                   </View>
                   <View style={styles.cardRight}>
                     <Text style={styles.cardCount}>{item.waiting_count}</Text>
@@ -211,55 +227,105 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc', paddingTop: 60 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+
   header: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', paddingHorizontal: 20, marginBottom: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginBottom: 16,
   },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   title: { fontSize: 24, fontWeight: '700', color: '#1e293b' },
   subtitle: { fontSize: 14, color: '#64748b', marginTop: 2 },
+
   toggle: {
-    flexDirection: 'row', marginHorizontal: 20, marginBottom: 16,
-    backgroundColor: '#e2e8f0', borderRadius: 12, padding: 4,
+    flexDirection: 'row',
+    marginHorizontal: 20,
+    marginBottom: 16,
+    backgroundColor: '#e2e8f0',
+    borderRadius: 12,
+    padding: 4,
   },
   toggleBtn: {
-    flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 10,
+    flex: 1,
+    flexDirection: 'row',
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
   },
-  toggleBtnActive: { backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, elevation: 2 },
+  toggleBtnActive: {
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
   toggleText: { fontSize: 14, fontWeight: '500', color: '#64748b' },
-  toggleTextActive: { color: '#1e293b', fontWeight: '700' },
+  toggleTextActive: { color: '#1e293b', fontWeight: '600' },
+
   mapContainer: { flex: 1 },
   map: { flex: 1 },
   mapLegend: {
-    position: 'absolute', bottom: 16, left: 16, right: 16,
-    backgroundColor: '#fff', borderRadius: 12, padding: 12,
-    shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, elevation: 3,
+    position: 'absolute',
+    bottom: 16,
+    left: 16,
+    right: 16,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  mapLegendText: { fontSize: 13, color: '#475569', textAlign: 'center', fontWeight: '500' },
+  mapLegendText: { fontSize: 13, color: '#475569', fontWeight: '500' },
+
   list: { paddingHorizontal: 20, gap: 12 },
   card: {
-    backgroundColor: '#fff', borderRadius: 16, padding: 20,
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   cardLeft: { flex: 1 },
   cardName: { fontSize: 16, fontWeight: '600', color: '#1e293b' },
-  cardDistance: { fontSize: 13, color: '#64748b', marginTop: 4 },
+  cardDistanceRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  cardDistance: { fontSize: 13, color: '#64748b' },
   cardRight: { alignItems: 'center', marginLeft: 16 },
   cardCount: { fontSize: 28, fontWeight: '700', color: '#6366f1' },
   cardCountLabel: { fontSize: 11, color: '#94a3b8' },
+
   btnPrimary: {
-    backgroundColor: '#6366f1', paddingHorizontal: 16,
-    paddingVertical: 8, borderRadius: 10,
+    backgroundColor: '#6366f1',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 10,
   },
   btnPrimaryText: { color: '#fff', fontWeight: '600', fontSize: 14 },
   btnOutline: {
-    borderWidth: 1.5, borderColor: '#6366f1', paddingHorizontal: 14,
-    paddingVertical: 7, borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1.5,
+    borderColor: '#6366f1',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
   },
   btnOutlineText: { color: '#6366f1', fontWeight: '600', fontSize: 14 },
-  signOutText: { color: '#ef4444', fontSize: 14, fontWeight: '500' },
-  emptyIcon: { fontSize: 48, marginBottom: 12 },
+  signOutBtn: { padding: 4 },
+
   emptyText: { fontSize: 15, color: '#64748b', textAlign: 'center' },
-  errorText: { fontSize: 16, color: '#ef4444', fontWeight: '600' },
+  errorText: { fontSize: 16, color: '#ef4444', fontWeight: '600', marginBottom: 6 },
 })
